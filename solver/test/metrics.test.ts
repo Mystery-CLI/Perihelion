@@ -90,6 +90,15 @@ test("toPrometheusText includes expected metric names", () => {
   assert.ok(text.includes(`solver_skips_total{reason="intent expired"}`));
 });
 
+test("recordImplausibleProfitTrigger increments counter and shows in Prometheus output", () => {
+  const m = new SolverMetrics();
+  m.recordImplausibleProfitTrigger();
+  m.recordImplausibleProfitTrigger();
+  assert.equal(m.snapshot().implausibleProfitTriggers, 2);
+  const text = m.toPrometheusText();
+  assert.ok(text.includes("solver_implausible_profit_triggers_total 2"));
+});
+
 test("snapshot is a defensive copy (mutations don't affect later snapshots)", () => {
   const m = new SolverMetrics();
   m.recordFillAttempt(ASSET);

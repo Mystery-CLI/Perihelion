@@ -314,6 +314,7 @@ export class Solver {
    * Capacity defaults to {@link SolverConfig.retryCacheSize} (10,000).
    */
   private readonly retryState: RetryStateLRU;
+  private consecutiveImplausibleTriggers = 0;
   private running = false;
   private readonly backoff: BackoffState;
   /** Resolves an in-progress interruptibleSleep early when stop() is called. */
@@ -514,7 +515,25 @@ export class Solver {
       this.inFlight,
     );
     if (!decision.fill) {
-      if (decision.nativeShortfall) {
+      if (decision.implausibleProfit) {
+        this.consecutiveImplausibleTriggers += 1;
+        this.log.error(
+          "skipping intent: implausible profit exceeds sanity bound — possible decimals/pricing misconfiguration",
+          {
+            hash,
+            profitBps: decision.profitBps,
+            maxPlausibleProfitBps: this.config.maxPlausibleProfitBps ?? 1000,
+            consecutiveTriggers: this.consecutiveImplausibleTriggers,
+          },
+        );
+        this.metrics?.recordImplausibleProfitTrigger?.();
+        const maxTriggers = this.config.maxImplausibleProfitTriggers ?? 5;
+        if (this.consecutiveImplausibleTriggers >= maxTriggers) {
+          throw new FatalError(
+            `Solver halted: repeated implausible profit triggers (${this.consecutiveImplausibleTriggers}) exceeded limit (${maxTriggers}) — check pricing configuration`,
+          );
+        }
+      } else if (decision.nativeShortfall) {
         // Operator-actionable and affects every intent, not just this one —
         // log at error level so it pages rather than scrolling past as info.
         this.log.error("skipping intent: native balance shortfall — solver cannot fund a fill leg", {
@@ -536,6 +555,7 @@ export class Solver {
       return false;
     }
 
+    this.consecutiveImplausibleTriggers = 0;
     this.log.info("filling intent", { hash, profitBps: decision.profitBps });
     this.metrics?.recordFillAttempt(intent.destAsset);
     const reserved = BigInt(intent.minDestAmount);

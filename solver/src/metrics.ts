@@ -33,6 +33,8 @@ export interface MetricsSnapshot {
   readonly totalFeesWei: bigint;
   /** Histogram of skip reasons: reason → count. */
   readonly skipReasons: Readonly<Record<string, number>>;
+  /** Dedicated counter for implausible profit sanity bound triggers. */
+  readonly implausibleProfitTriggers: number;
   /** ISO timestamp of the last reset (or process start). */
   readonly since: string;
 }
@@ -47,6 +49,7 @@ export interface Metrics {
   ): void;
   recordFillLost(destAsset: string, reason: string): void;
   recordSkip(reason: string): void;
+  recordImplausibleProfitTrigger?(): void;
   recordFee(wei: bigint): void;
   snapshot(): MetricsSnapshot;
 }
@@ -55,6 +58,7 @@ export class SolverMetrics implements Metrics {
   private readonly corridors = new Map<string, CorridorStats>();
   private totalFeesWei = 0n;
   private readonly skipReasons = new Map<string, number>();
+  private implausibleProfitTriggers = 0;
   private readonly since = new Date().toISOString();
 
   private corridor(asset: string): CorridorStats {
@@ -112,6 +116,10 @@ export class SolverMetrics implements Metrics {
     this.skipReasons.set(reason, (this.skipReasons.get(reason) ?? 0) + 1);
   }
 
+  recordImplausibleProfitTrigger(): void {
+    this.implausibleProfitTriggers += 1;
+  }
+
   recordFee(wei: bigint): void {
     this.totalFeesWei += wei;
   }
@@ -135,6 +143,7 @@ export class SolverMetrics implements Metrics {
       corridors,
       totalFeesWei: this.totalFeesWei,
       skipReasons,
+      implausibleProfitTriggers: this.implausibleProfitTriggers,
       since: this.since,
     };
   }
@@ -157,6 +166,7 @@ export class SolverMetrics implements Metrics {
     }
 
     lines.push(`solver_fees_total_wei ${snap.totalFeesWei}`);
+    lines.push(`solver_implausible_profit_triggers_total ${snap.implausibleProfitTriggers}`);
 
     for (const [reason, count] of Object.entries(snap.skipReasons)) {
       lines.push(`solver_skips_total{reason="${reason}"} ${count}`);
