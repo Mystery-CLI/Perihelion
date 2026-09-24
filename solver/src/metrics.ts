@@ -18,10 +18,12 @@ export interface CorridorStats {
   /** Fills that threw an executor error (lost race or revert). */
   fillsLost: number;
   /**
-   * Realized profit = sum of (deliverable − minDestAmount) for every won fill,
+   * Estimated profit = sum of (deliverable − minDestAmount - fees) for every won fill,
    * in dest-asset smallest units.
    */
-  realizedProfitSmallestUnits: bigint;
+  estimatedProfitSmallestUnits: bigint;
+  /** Backward-compatible alias for estimatedProfitSmallestUnits. */
+  readonly realizedProfitSmallestUnits?: bigint;
 }
 
 export interface MetricsSnapshot {
@@ -38,7 +40,11 @@ export interface MetricsSnapshot {
 /** Interface used by Solver to record events without importing the concrete class. */
 export interface Metrics {
   recordFillAttempt(destAsset: string): void;
-  recordFillWon(destAsset: string, minDestAmount: bigint, marginBps: number): void;
+  recordFillWon(
+    destAsset: string,
+    minDestAmountOrProfit: bigint,
+    marginBpsOrFee?: number | bigint,
+  ): void;
   recordFillLost(destAsset: string, reason: string): void;
   recordSkip(reason: string): void;
   recordFee(wei: bigint): void;
@@ -58,7 +64,10 @@ export class SolverMetrics implements Metrics {
         fillsAttempted: 0,
         fillsWon: 0,
         fillsLost: 0,
-        realizedProfitSmallestUnits: 0n,
+        estimatedProfitSmallestUnits: 0n,
+        get realizedProfitSmallestUnits() {
+          return this.estimatedProfitSmallestUnits;
+        },
       };
       this.corridors.set(asset, s);
     }
@@ -71,15 +80,28 @@ export class SolverMetrics implements Metrics {
 
   /**
    * Record a successful fill.
-   * @param destAsset    The destination asset key.
-   * @param minDestAmount The user's minimum accepted amount (our cost to fill).
-   * @param marginBps    Margin in basis points of minDestAmount — used to back-compute profit.
+   *
+   * Supports two signatures:
+   * 1. (destAsset, estimatedProfitSmallestUnits, feeSmallestUnits?) - exact profit units.
+   * 2. (destAsset, minDestAmount, marginBps) - backward compatibility back-computing against minDestAmount.
    */
-  recordFillWon(destAsset: string, minDestAmount: bigint, marginBps: number): void {
+  recordFillWon(
+    destAsset: string,
+    amountOrProfit: bigint,
+    bpsOrFee?: number | bigint,
+  ): void {
     const c = this.corridor(destAsset);
     c.fillsWon += 1;
-    // profit = minDestAmount * marginBps / 10_000
-    c.realizedProfitSmallestUnits += (minDestAmount * BigInt(marginBps)) / 10_000n;
+    if (typeof bpsOrFee === "number") {
+      // Legacy call: recordFillWon(destAsset, minDestAmount, marginBps)
+      c.estimatedProfitSmallestUnits += (amountOrProfit * BigInt(bpsOrFee)) / 10_000n;
+    } else {
+      // Modern call: recordFillWon(destAsset, profitSmallestUnits, feeSmallestUnits)
+      c.estimatedProfitSmallestUnits += amountOrProfit;
+      if (typeof bpsOrFee === "bigint" && bpsOrFee > 0n) {
+        this.recordFee(bpsOrFee);
+      }
+    }
   }
 
   recordFillLost(destAsset: string, _reason: string): void {
@@ -97,7 +119,13 @@ export class SolverMetrics implements Metrics {
   snapshot(): MetricsSnapshot {
     const corridors: Record<string, CorridorStats> = {};
     for (const [k, v] of this.corridors) {
-      corridors[k] = { ...v };
+      corridors[k] = {
+        fillsAttempted: v.fillsAttempted,
+        fillsWon: v.fillsWon,
+        fillsLost: v.fillsLost,
+        estimatedProfitSmallestUnits: v.estimatedProfitSmallestUnits,
+        realizedProfitSmallestUnits: v.estimatedProfitSmallestUnits,
+      };
     }
     const skipReasons: Record<string, number> = {};
     for (const [k, v] of this.skipReasons) {
@@ -124,7 +152,8 @@ export class SolverMetrics implements Metrics {
       lines.push(`solver_fills_attempted{${label}} ${c.fillsAttempted}`);
       lines.push(`solver_fills_won{${label}} ${c.fillsWon}`);
       lines.push(`solver_fills_lost{${label}} ${c.fillsLost}`);
-      lines.push(`solver_realized_profit_units{${label}} ${c.realizedProfitSmallestUnits}`);
+      lines.push(`solver_estimated_profit_units{${label}} ${c.estimatedProfitSmallestUnits}`);
+      lines.push(`solver_realized_profit_units{${label}} ${c.estimatedProfitSmallestUnits}`);
     }
 
     lines.push(`solver_fees_total_wei ${snap.totalFeesWei}`);

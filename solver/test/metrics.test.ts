@@ -63,6 +63,16 @@ test("recordFee accumulates", () => {
   assert.equal(m.snapshot().totalFeesWei, 3_000n);
 });
 
+test("recordFillWon with direct profit and fee spend", () => {
+  const m = new SolverMetrics();
+  m.recordFillWon(ASSET, 150_000n, 5_000n);
+  const c = m.snapshot().corridors[ASSET]!;
+  assert.equal(c.fillsWon, 1);
+  assert.equal(c.estimatedProfitSmallestUnits, 150_000n);
+  assert.equal(c.realizedProfitSmallestUnits, 150_000n);
+  assert.equal(m.snapshot().totalFeesWei, 5_000n);
+});
+
 test("toPrometheusText includes expected metric names", () => {
   const m = new SolverMetrics();
   m.recordFillAttempt(ASSET);
@@ -74,6 +84,7 @@ test("toPrometheusText includes expected metric names", () => {
   assert.ok(text.includes("solver_fills_attempted"));
   assert.ok(text.includes("solver_fills_won"));
   assert.ok(text.includes("solver_fills_lost"));
+  assert.ok(text.includes("solver_estimated_profit_units"));
   assert.ok(text.includes("solver_realized_profit_units"));
   assert.ok(text.includes("solver_fees_total_wei"));
   assert.ok(text.includes(`solver_skips_total{reason="intent expired"}`));

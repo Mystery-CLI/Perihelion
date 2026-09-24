@@ -546,10 +546,13 @@ export class Solver {
       const { settlementTx } = await this.executor.fill(record);
       fillSucceeded = true;
       this.log.info("filled", { hash, settlementTx });
+      const profitUnits =
+        decision.estimatedProfitSmallestUnits ??
+        (BigInt(intent.minDestAmount) * BigInt(decision.profitBps ?? 0)) / 10_000n;
       this.metrics?.recordFillWon(
         intent.destAsset,
-        BigInt(intent.minDestAmount),
-        decision.profitBps ?? 0,
+        profitUnits,
+        decision.estimatedFeeSmallestUnits,
       );
       // Terminal: filled successfully.
       this.seen.add(hash, deadlineMs);

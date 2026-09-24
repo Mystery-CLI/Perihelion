@@ -134,6 +134,10 @@ export interface FillDecision {
   readonly terminal: boolean;
   /** Estimated profit in basis points of capital deployed, when computed. */
   readonly profitBps?: number;
+  /** Estimated net profit in dest-asset smallest units (proceeds - minOut - fees). */
+  readonly estimatedProfitSmallestUnits?: bigint;
+  /** Estimated fee cost in dest-asset smallest units. */
+  readonly estimatedFeeSmallestUnits?: bigint;
   /**
    * Set when the skip is caused by the solver lacking the *native* balance to
    * pay a fill leg's fees (source-chain gas + LayerZero, or Stellar XLM).
@@ -358,5 +362,12 @@ export async function evaluate(
     }
   }
 
-  return { fill: true, reason: "profitable", terminal: false, profitBps };
+  return {
+    fill: true,
+    reason: "profitable",
+    terminal: false,
+    profitBps,
+    estimatedProfitSmallestUnits: profit,
+    estimatedFeeSmallestUnits: fees,
+  };
 }
