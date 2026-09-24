@@ -23,7 +23,7 @@
  * that table.
  */
 
-import { isExpired, fromSmallestUnits, toSmallestUnits, MIN_FILL_HEADROOM_SECS } from "@perihelion/sdk";
+import { isExpired, MIN_FILL_HEADROOM_SECS } from "@perihelion/sdk";
 import type { Intent } from "@perihelion/sdk";
 import { zeroAddress, isAddressEqual, type Address } from "viem";
 import type { SolverConfig } from "./config.js";
@@ -63,7 +63,6 @@ export type FeeEstimator = (intent: Intent) => Promise<bigint>;
 const KNOWN_DECIMALS: Record<string, number> = {
   // Stellar (7dp)
   "native": 7,
-  // EVM stablecoins (6dp) — matched by lower-cased address prefix check below
 };
 
 /** Fallback decimal lookup: known table → 7dp for Stellar assets → error. */
